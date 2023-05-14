@@ -100,3 +100,102 @@ uint16_t extend_sign(uint16_t val, int bitcount){
 	return val;
 }
 
+
+//Fizza Rashid(21K-3390)
+
+//swap bits of value rightmost 8 bits to leftmost 8 bits and vice versa -> to support little endian
+uint16_t swap_16(uint16_t val){
+	return (val<<8) | (val>>8);
+}
+
+//update flags after each instruction execution
+void update_flags(uint16_t re){
+	if (reg[re]==0){
+		reg[r_cond]=flzero;
+	}
+	else if (reg[re]>>15==1){ //if msb is 1
+		reg[r_cond]=flneg;
+	}
+	else{
+		reg[r_cond]=flpos;
+	}
+}
+
+//READ DATA FROM THE FILE TO BE USED E.G.,2048.obj IS READ
+void read_image_file(FILE* file){
+	//origin (or) used to determine where in memory to place the image
+	uint16_t or;
+	fread(&or, sizeof(or), 1, file);
+	or=swap_16(or);
+	//already know max size of file so only one fread required
+	uint16_t max_read=max_mem-or;
+	uint16_t *p=memory+or; //take place in memory of vm
+	size_t read=fread(p,sizeof(uint16_t),max_read,file);
+	//swap to little endian as mostly modern processors support this endian system
+	while (read-- > 0){
+		*p=swap_16(*p);
+		++p;
+	}
+}
+//check existence if exist-read else return 0
+int read_image(const char* image_path){
+	FILE* file=fopen(image_path,"rb");
+	if (!file){
+		return 0;
+	}
+	read_image_file(file);
+	fclose(file);
+	return 1;
+}
+
+//write in memory
+void mem_write(uint16_t addr, uint16_t val){
+	memory[addr]=val;
+}
+
+//read in memory
+uint16_t mem_read(uint16_t addr){
+	//if take data from keyboard -> means that address of keyboard is given
+	if (addr==mr_kbsr){
+		if (check_key()){
+			memory[mr_kbsr]=(1<<15);
+			memory[mr_kbdr]=getchar();
+		}
+		else{
+			memory[mr_kbsr]=0;
+		}
+	}
+	//now return memory data which is read
+	return memory[addr];
+}
+
+//------------------------------------------------MAIN DRIVER FUNCTION------------------------------------------------
+int main(int argc, const char* argv[]){
+	//argc and argv[] -> program's parameters
+	if (argc<2){
+		//show usage string
+		printf("LC-3 [image-file1]..\n");
+		exit(2);
+	}
+	for (int j=1; j<argc;++j){
+		if (!read_image(argv[j])){
+			printf("Failed to load image: %s\nEXITING PROGRAM!\n",argv[j]);
+			exit(1);
+		}
+	}
+	signal(SIGINT, handle_interrupt);
+	disable_input_buffering();
+	
+	//exactly one condition flag should always be set so set zero flag
+	reg[r_cond]=flzero;
+	
+	//set 'PROGRAM COUNTER' pc to starting positions and 0x3000 is default
+	enum{ pc_start=0x3000 };
+	reg[r_pc]=pc_start;
+
+	printf("\nWELCOME TO OUR VIRTUAL MACHINE FOR LC-3 ARCHITECTURE!\nUSE AWSD KEYS\n A-> left, W->up, S->down, D->right\n\n");
+	int run=1;
+//WHILE LOOP
+	
+	restore_input_buffering();
+}
