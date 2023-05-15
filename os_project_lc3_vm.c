@@ -195,7 +195,243 @@ int main(int argc, const char* argv[]){
 
 	printf("\nWELCOME TO OUR VIRTUAL MACHINE FOR LC-3 ARCHITECTURE!\nUSE AWSD KEYS\n A-> left, W->up, S->down, D->right\n\n");
 	int run=1;
-//WHILE LOOP
-	
+	while (run){
+		//fetch instructions
+		uint16_t inst=mem_read(reg[r_pc]);
+		reg[r_pc]++; //increment pc
+		uint16_t opcode=inst>>12; //opcode first of 4 bits so rightshift as here only opcode->12 to 15 bits
+		switch(opcode){
+			case op_add:
+				{
+				  //find destination reg->9 to 11 inclusive->shift 9 right->only leftmost 3 reqd so and 111->7
+				  uint16_t r0=(inst>>9) & 0x7;
+				  //first operand -> 6 to 8 inclusive
+				  uint16_t r1=(inst>>6) & 0x7;
+				  //5 bit to check whether immediate mode or reg
+				  uint16_t imm_check=(inst>>5) & 0x1;
+				  if (imm_check==1){
+				  	//immediate mode immediate bits->0 to 4
+				  	uint16_t imm5=extend_sign(inst&0x1F,5); //change immediate 5 bits to 16 bits
+				  	reg[r0]=reg[r1]+imm5;
+				  }
+				  else{
+				  	//reg 2 -> 0 to 2 bits
+				  	uint16_t r2=inst & 0x7;
+				  	reg[r0]=reg[r1]+reg[r2];
+				  }
+				  update_flags(r0);
+				}
+				break;
+			case op_and:
+				{
+				  //same as we did in the 'add' instruction
+				  uint16_t r0=(inst>>9) & 0x7;
+				  uint16_t r1=(inst>>6) & 0x7;
+				  uint16_t imm_check=(inst>>5) & 0x1;
+				  if (imm_check==1){
+				  	//immediate mode
+				  	uint16_t imm5=extend_sign(inst & 0x1F, 5);
+					reg[r0]=reg[r1]&imm5;
+				  }
+				  else{
+				  	uint16_t r2=inst & 0x7;
+				  	reg[r0]=reg[r1]&reg[r2];
+				  }
+				  update_flags(r0);
+				}
+				break;
+			case op_not:
+				{
+				  //find destination reg and source reg like we did before
+				  uint16_t r0=(inst>>9) & 0x7;
+				  uint16_t r1=(inst>>6) & 0x7;
+				  reg[r0]=~reg[r1];
+				  update_flags(r0);
+				}
+				break;
+			case op_br:
+				{
+				  //branch instruction where jump to offset from 0 to 8 -> 9 bits
+				  uint16_t pc_offset=extend_sign(inst & 0x1FF, 9);
+				  //condition flags from 9 to 11 -> 3 bits
+				  uint16_t cond_flag=(inst>>9) & 0x7;
+				  if (cond_flag & reg[r_cond]){
+				  	//if condition reqd by branch is met by the result's condition produced by the result
+				  	reg[r_pc]+=pc_offset;
+				  }
+				}
+				break;
+			case op_jmp:
+				{
+				  //jump from 6 to 8 unconditionally -> 3 bits
+				  //handles return as well
+				  uint16_t r1=(inst>>6) & 0x7;
+				  reg[r_pc]=reg[r1];
+				}
+				break;
+			case op_jsr:
+				{
+				  //check for bit 11 flag -> 0=jump to subroutine 1=offset given
+				  uint16_t fl_11=(inst>>11) & 1;
+				  reg[r_r7]=reg[r_pc]; //to retain the state of vm
+				  if (fl_11==1){
+				  	//0 to 10 offset given -> 11 bits
+				  	uint16_t pc_offset=extend_sign(inst & 0x7FF,11);
+				  	reg[r_pc]=reg[r_pc]+pc_offset;
+				  }
+				  else{
+				  	//subroutine addr -> 6 to 8 bits -> 3 bits
+				  	uint16_t r1=(inst>>6)&0x7;
+				  	reg[r_pc]=reg[r1];
+				  }
+				}
+				break;
+			case op_ld:
+				{
+				  //load direct
+				  //9 to 11->destination reg->3 bits
+				  //0 to 8->offset->9 bits
+				  uint16_t r0=(inst>>9) & 0x7;
+				  uint16_t pc_offset=extend_sign(inst & 0x1FF,9);
+				  reg[r0]=mem_read(reg[r_pc]+pc_offset);
+				  update_flags(r0);
+				}
+				break;
+			case op_ldi:
+				{
+				  //load indirect
+				  //9 to 11->destination reg->3 bits
+				  //0 to 8->offset->9 bits
+				  uint16_t r0=(inst>>9) & 0x7;
+				  uint16_t pc_offset=extend_sign(inst & 0x1FF, 9);
+				  //add pc_offset to current_pc, look at mem location to get the final address of the value to be fetched
+				  reg[r0]=mem_read( mem_read(reg[r_pc]+pc_offset) );
+				  update_flags(r0);
+				}
+				break;
+			case op_ldr:
+				{
+				  //load base+offset
+				  //0 to 5->offset->6 bits
+				  //8 to 6->base->3 bits
+				  //9 to 11->destination reg->3 bits
+				  uint16_t r0=(inst>>9) & 0x7;
+				  uint16_t r1=(inst>>6) & 0x7;
+				  uint16_t offset=extend_sign(inst & 0x3F, 6);
+				  reg[r0]=mem_read(reg[r1]+offset);
+				  update_flags(r0);
+				}
+				break;
+			case op_lea:
+				{
+				  //load effective address
+				  //destination reg->9 to 11->3 bits
+				  //offset->0 to 8->9 bits
+				  uint16_t r0=(inst>>9) & 0x7;
+				  uint16_t pc_offset=extend_sign(inst & 0x1FF,9);
+				  reg[r0]=reg[r_pc]+pc_offset;
+				  update_flags(r0);
+				}
+				break;
+			case op_st:
+				{
+				  //store
+				  //0 to 8->offset->9 bits
+				  //9 to 11->source reg->3 bits
+				  uint16_t r0=(inst>>9) & 0x7;
+				  uint16_t pc_offset=extend_sign(inst & 0x1FF,9);
+				  mem_write(reg[r_pc]+pc_offset, reg[r0]);
+				}
+				break;
+			case op_sti:
+				{
+				  //store indirect
+				  //0 to 8->offset->9 bits
+				  //9 to 11->source reg->3 bits
+				  uint16_t r0=(inst>>9) & 0x7;
+				  uint16_t pc_offset=extend_sign(inst & 0x1FF, 9);
+				  mem_write( mem_read(reg[r_pc]+pc_offset) ,reg[r0]);
+				}
+				break;
+			case op_str:
+				{
+				  //store base+offset
+				  //0 to 5->offset->6 bits
+				  //8 to 6->base->3 bits
+				  //9 to 11->source reg->3 bits
+				  uint16_t r0=(inst>>9) & 0x7; //source reg
+				  uint16_t r1=(inst>>6) & 0x7;
+				  uint16_t offset=extend_sign(inst & 0x3F, 6);
+				  mem_write(reg[r1]+offset,reg[r0]);
+				}
+				break;
+			case op_trap:
+				reg[r_r7]=reg[r_pc];
+				switch(inst & 0xFF) //0 to 7 trap vector
+				{
+					case trap_getc:
+						//read single ASCII character
+						reg[r_r0]=(uint16_t)getchar();
+						update_flags(r_r0);
+						break;
+					case trap_out:
+						//output a single character onto screen
+						putc((char)reg[r_r0],stdout);
+						fflush(stdout);
+						break;
+					case trap_puts:
+						{
+						  //one character displayed per word/string in register r_r0
+						  uint16_t* ch=memory+reg[r_r0];
+						  while (*ch){
+							putc((char)*ch,stdout);
+							++ch;
+						  }
+						  fflush(stdout);
+						}
+						break;
+					case trap_in:
+						{
+						  //input a character with echo onto terminal
+						  printf("Enter a character: ");
+						  char c=getchar();
+						  putc(c,stdout);
+						  fflush(stdout);
+						  reg[r_r0]=(uint16_t)c;
+						  update_flags(r_r0);
+						}
+						break;
+					case trap_putsp:
+						{
+						  //output byte string 
+						  //one char per byte (two bytes per word). we need to swap back to big endian format to print string
+						  uint16_t* c=memory+reg[r_r0];
+						  while(*c){
+							char char1=(*c)&0xFF;
+							putc(char1,stdout);
+							char char2=(*c)>>8;
+							if (char2) putc(char2,stdout);
+							++c;
+						  }
+						  fflush(stdout);
+						}
+						break;
+					case trap_halt:
+						puts("HALT");
+						puts("THANK YOU!");
+						fflush(stdout);
+						run=0;
+						break;
+				}
+				break;
+			case op_res:
+			case op_rti:
+			default:
+				//unused intructions
+				abort();
+				break;
+
+		}
+	}
 	restore_input_buffering();
 }
