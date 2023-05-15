@@ -16,7 +16,7 @@
 		         LC-3 ARCHITECTURE => RISC so smaller instruction set of 10 opcodes supported
 						  GROUP MEMBERS:
 					      Sana Khalid   (21K-3421)
-					      Fizza Rashid  (21K-3409)
+					      Fizza Rashid  (21K-3390)
 					      Virkha Kumari (21K-4507)
 */
 //sana khalid
@@ -99,9 +99,6 @@ uint16_t extend_sign(uint16_t val, int bitcount){
 	}
 	return val;
 }
-
-
-//Fizza Rashid(21K-3390)
 
 //swap bits of value rightmost 8 bits to leftmost 8 bits and vice versa -> to support little endian
 uint16_t swap_16(uint16_t val){
